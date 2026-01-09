@@ -7,9 +7,12 @@ from unittest.mock import MagicMock
 
 class MockHttpResponse:
     def __init__(self, body, mimetype, status_code):
-        self.body = body
+        self._body = body
         self.mimetype = mimetype
         self.status_code = status_code
+
+    def get_body(self):
+        return self._body.encode() if isinstance(self._body, str) else self._body
 
 
 class MockBlueprint:
@@ -43,7 +46,10 @@ class TestCombinePagesAndChunkNos:
     @staticmethod
     def _parse_response(response):
         """Helper to parse response body."""
-        return json.loads(response.body)
+        body = response.get_body()
+        if isinstance(body, bytes):
+            body = body.decode()
+        return json.loads(body)
 
     def test_combines_pages_and_chunknos(self):
         """Test array zipping logic creates correct page_text/chunk_no objects."""
