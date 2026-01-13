@@ -22,6 +22,7 @@ class MockBlueprint:
         return decorator
 
 
+# Mock azure.functions before importing the module under test
 mock_func = MagicMock()
 mock_func.HttpRequest = MagicMock
 mock_func.HttpResponse = MockHttpResponse
@@ -30,11 +31,15 @@ mock_func.AuthLevel = MagicMock()
 mock_func.AuthLevel.ANONYMOUS = 0
 sys.modules['azure.functions'] = mock_func
 
-from backend.batch.combine_pages_chunknos import combine_pages_and_chunknos
-
 
 class TestCombinePagesAndChunkNos:
     """Tests for the combine_pages_and_chunknos Azure Function."""
+
+    @staticmethod
+    def _get_combine_function():
+        """Lazy import of the function under test."""
+        from backend.batch.combine_pages_chunknos import combine_pages_and_chunknos
+        return combine_pages_and_chunknos
 
     @staticmethod
     def _create_request(values):
@@ -53,6 +58,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_combines_pages_and_chunknos(self):
         """Test array zipping logic creates correct page_text/chunk_no objects."""
+        combine_pages_and_chunknos = self._get_combine_function()
         request = self._create_request([{
             "recordId": "1",
             "data": {"pages": ["Page 1", "Page 2", "Page 3"], "chunk_nos": [1, 2, 3]}
@@ -70,6 +76,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_processes_multiple_records(self):
         """Test for loop processes all records."""
+        combine_pages_and_chunknos = self._get_combine_function()
         request = self._create_request([
             {"recordId": "1", "data": {"pages": ["P1"], "chunk_nos": [1]}},
             {"recordId": "2", "data": {"pages": ["P2"], "chunk_nos": [2]}}
@@ -84,6 +91,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_handles_empty_arrays(self):
         """Test edge case with empty input arrays."""
+        combine_pages_and_chunknos = self._get_combine_function()
         request = self._create_request([{
             "recordId": "1",
             "data": {"pages": [], "chunk_nos": []}
@@ -96,6 +104,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_handles_json_parse_errors(self):
         """Test custom error handling returns 500 with error details."""
+        combine_pages_and_chunknos = self._get_combine_function()
         mock_request = MagicMock()
         mock_request.get_json.side_effect = ValueError("Invalid JSON")
 
@@ -108,6 +117,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_returns_webapiskill_format(self):
         """Test response structure matches WebApiSkill specification."""
+        combine_pages_and_chunknos = self._get_combine_function()
         request = self._create_request([{
             "recordId": "test-123",
             "data": {"pages": ["Test"], "chunk_nos": [1]}
@@ -124,6 +134,7 @@ class TestCombinePagesAndChunkNos:
 
     def test_preserves_record_id(self):
         """Test recordId flows through unchanged."""
+        combine_pages_and_chunknos = self._get_combine_function()
         request = self._create_request([{
             "recordId": "unique-id-12345",
             "data": {"pages": ["Test"], "chunk_nos": [999]}

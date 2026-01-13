@@ -205,7 +205,7 @@ async def test_orchestrate_with_chat_history_builds_memory(
     agent.output_parser.parse.return_value = [{"role": "assistant", "content": "Third answer"}]
 
     # When
-    result = await agent.orchestrate(user_message="Third question", chat_history=chat_history)
+    await agent.orchestrate(user_message="Third question", chat_history=chat_history)
 
     # Then - verify memory was created (AgentExecutor.from_agent_and_tools called with memory)
     assert agent_executor_mock.called
@@ -236,7 +236,7 @@ async def test_orchestrate_with_answer_json_parse_exception_creates_fallback_ans
     agent.output_parser.parse.return_value = [{"role": "assistant", "content": "Plain text answer without JSON"}]
 
     # When
-    result = await agent.orchestrate(user_message="Hello", chat_history=[])
+    await agent.orchestrate(user_message="Hello", chat_history=[])
 
     # Then - verify output parser was called with fallback Answer object
     agent.output_parser.parse.assert_called_once()
@@ -278,7 +278,7 @@ async def test_orchestrate_with_post_answering_prompt_validates_answer(
     agent.output_parser.parse.return_value = [{"role": "assistant", "content": "Validated answer"}]
 
     # When
-    result = await agent.orchestrate(user_message="Hello", chat_history=[])
+    await agent.orchestrate(user_message="Hello", chat_history=[])
 
     # Then - verify post prompt validation was called
     post_prompt_instance.validate_answer.assert_called_once()

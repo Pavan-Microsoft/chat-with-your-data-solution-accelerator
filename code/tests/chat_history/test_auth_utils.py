@@ -6,7 +6,6 @@ Tests authentication utility functions for EasyAuth header processing.
 import base64
 import json
 from unittest.mock import patch, MagicMock
-import pytest
 
 from backend.batch.utilities.chat_history.auth_utils import (
     get_authenticated_user_details,

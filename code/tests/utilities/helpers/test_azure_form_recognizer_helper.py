@@ -58,7 +58,7 @@ class TestAzureFormRecognizerClientInitialization:
         mock_credential = Mock()
         mock_get_credential.return_value = mock_credential
 
-        client = AzureFormRecognizerClient()
+        AzureFormRecognizerClient()
 
         mock_get_credential.assert_called_once_with("test-client-id")
         mock_client.assert_called_once()
