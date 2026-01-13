@@ -6,7 +6,6 @@ import os
 import logging
 import sys
 import streamlit as st
-from azure.monitor.opentelemetry import configure_azure_monitor
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -33,6 +32,7 @@ for logger_name in AZURE_LOGGING_PACKAGES:
 # We cannot use EnvHelper here as Application Insights needs to be configured first
 # for instrumentation to work correctly
 if os.getenv("APPLICATIONINSIGHTS_ENABLED", "false").lower() == "true":
+    from azure.monitor.opentelemetry import configure_azure_monitor
     configure_azure_monitor()
 
 logger = logging.getLogger(__name__)
