@@ -9,6 +9,9 @@ from unittest.mock import MagicMock, patch, mock_open
 import pytest
 
 
+# Mock Azure Monitor before importing Admin.py to prevent telemetry initialization
+sys.modules['azure.monitor.opentelemetry'] = MagicMock()
+
 # Mock streamlit before importing Admin.py to prevent module-level execution issues
 mock_st = MagicMock()
 mock_st.columns.return_value = (MagicMock(), MagicMock(), MagicMock())
