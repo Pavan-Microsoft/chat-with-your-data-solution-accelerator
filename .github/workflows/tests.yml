@@ -81,11 +81,12 @@ jobs:
       - name: Get coverage from main
         id: coverage-value
         run: |
-          MIN_COVERAGE=0
+          MIN_COVERAGE=90  # Set a minimum baseline
 
           if [[ -f "./coverage-main/coverage.xml" ]]; then
-            MIN_COVERAGE=$(grep -m 1 "<coverage" "./coverage-main/coverage.xml" | sed -E 's/.*line-rate="([^"]*)".*/\1/') # Extract the line rate from the XML
-            MIN_COVERAGE=$(awk "BEGIN {print int($MIN_COVERAGE * 100)}") # Turn into percentage, rounding down to avoid rounding issues
+            MAIN_COVERAGE=$(grep -m 1 "<coverage" "./coverage-main/coverage.xml" | sed -E 's/.*line-rate="([^"]*)".*/\1/')
+            MAIN_COVERAGE=$(awk "BEGIN {print int($MAIN_COVERAGE * 100)}")
+            MIN_COVERAGE=$(( MAIN_COVERAGE > MIN_COVERAGE ? MAIN_COVERAGE : MIN_COVERAGE ))
           fi
 
           echo "MIN_COVERAGE=$MIN_COVERAGE" >> "$GITHUB_OUTPUT"
