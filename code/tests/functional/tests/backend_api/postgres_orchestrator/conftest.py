@@ -23,7 +23,8 @@ def app_url(app_port: int) -> str:
 @pytest.fixture(scope="function")
 def mock_postgres_connection():
     """Mock PostgreSQL connection for functional tests only (not autouse to avoid interfering with unit tests)"""
-    with patch('psycopg2.connect') as mock_connect:
+    with patch('psycopg2.connect') as mock_connect, \
+         patch('backend.batch.utilities.helpers.azure_postgres_helper.get_azure_credential'):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
