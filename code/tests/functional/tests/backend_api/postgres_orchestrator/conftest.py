@@ -20,9 +20,9 @@ def app_url(app_port: int) -> str:
     return f"http://localhost:{app_port}"
 
 
-@pytest.fixture(scope="package", autouse=True)
+@pytest.fixture(scope="package")
 def mock_postgres_connection():
-    """Mock PostgreSQL connection for tests"""
+    """Mock PostgreSQL connection for functional tests only (not autouse to avoid interfering with unit tests)"""
     with patch('psycopg2.connect') as mock_connect:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -81,7 +81,8 @@ def app_config(make_httpserver, ca):
 
 
 @pytest.fixture(scope="package", autouse=True)
-def manage_app(app_port: int, app_config: AppConfig):
+def manage_app(app_port: int, app_config: AppConfig, mock_postgres_connection):
+    """Manage app startup/teardown. Explicitly depends on mock_postgres_connection to ensure it's active."""
     app_config.apply_to_environment()
     EnvHelper.clear_instance()
     ConfigHelper.clear_config()
