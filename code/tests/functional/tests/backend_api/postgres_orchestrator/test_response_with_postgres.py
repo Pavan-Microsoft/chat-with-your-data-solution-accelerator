@@ -28,7 +28,7 @@ body = {
 }
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope="function")
 def mock_postgres_query():
     """Mock PostgreSQL vector search query for functional tests"""
     with patch('backend.batch.utilities.helpers.azure_postgres_helper.AzurePostgresHelper.get_vector_store') as mock_vector_store:
