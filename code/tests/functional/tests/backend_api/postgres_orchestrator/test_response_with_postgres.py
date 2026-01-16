@@ -161,15 +161,13 @@ def test_post_makes_correct_call_to_openai_chat_completions_with_postgres(
     )
 
 
-def test_postgres_search_handler_is_used(app_url: str, app_config: AppConfig):
+def test_postgres_search_handler_is_used(app_url: str, app_config: AppConfig, mock_postgres_connection):
     """Verify that PostgreSQL search handler is selected based on DATABASE_TYPE"""
-    # Mock the Azure credential to prevent actual Azure calls
-    with patch('backend.batch.utilities.helpers.azure_postgres_helper.get_azure_credential'):
-        # when
-        env_helper = EnvHelper()
-        search_handler = Search.get_search_handler(env_helper)
+    # when
+    env_helper = EnvHelper()
+    search_handler = Search.get_search_handler(env_helper)
 
-        # then
-        assert isinstance(search_handler, AzurePostgresHandler), \
-            f"Expected AzurePostgresHandler but got {type(search_handler).__name__}"
-        assert env_helper.DATABASE_TYPE == "PostgreSQL"
+    # then
+    assert isinstance(search_handler, AzurePostgresHandler), \
+        f"Expected AzurePostgresHandler but got {type(search_handler).__name__}"
+    assert env_helper.DATABASE_TYPE == "PostgreSQL"
