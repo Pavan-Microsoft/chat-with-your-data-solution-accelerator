@@ -79,6 +79,8 @@ class TestCreateQueueClient:
     @patch("backend.batch.utilities.helpers.azure_blob_storage_client.QueueClient")
     def test_create_queue_client_with_rbac(self, mock_queue_client_class, mock_get_credential, mock_env_helper_rbac):
         """Test queue client creation with RBAC authentication."""
+        from urllib.parse import urlparse
+
         mock_credential = Mock()
         mock_get_credential.return_value = mock_credential
 
@@ -89,7 +91,10 @@ class TestCreateQueueClient:
         call_kwargs = mock_queue_client_class.call_args[1]
         assert call_kwargs['queue_name'] == "test-queue"
         assert call_kwargs['credential'] == mock_credential
-        assert "teststorageaccount.queue.core.windows.net" in call_kwargs['account_url']
+
+        # Properly validate URL by parsing and checking the netloc
+        parsed_url = urlparse(call_kwargs['account_url'])
+        assert parsed_url.netloc == "teststorageaccount.queue.core.windows.net"
 
 
 class TestAzureBlobStorageClientInitialization:
