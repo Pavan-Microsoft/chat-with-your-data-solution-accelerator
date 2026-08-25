@@ -20,7 +20,7 @@
 
 ![Redirect URL](images/AddRedirectURL.png)
 
-6. Click on `+ Add a platform`.
+6. Click on `+ Add redirect URI`.
 
 ![+ Add platform](images/AddPlatform.png)
 
@@ -28,8 +28,8 @@
 
 ![Web](images/Web.png)
 
-8. Enter the `web app URL` (Provide the app service name in place of XXXX) and Save. Then go back to [Set Up Authentication in Azure App Service](/docs/azure_app_service_auth_setup.md) Step 1 page and follow from _Point 4_ choose `Pick an existing app registration in this directory` from the Add an Identity Provider page and provide the newly registered App Name.
+8. Enter the frontend Container App's callback `URL` and Save. Then go back to [Set Up Authentication in Azure Container Apps](authentication_setup.md) Step 1 and follow from _Point 4_: choose `Pick an existing app registration in this directory` from the Add an identity provider page and provide the newly registered App Name.
 
-E.g. <<https://<< appservicename >>.azurewebsites.net/.auth/login/aad/callback>>
+E.g. `https://<CONTAINER_APP_FQDN>/.auth/login/aad/callback`
 
 ![Add Details](images/WebAppURL.png)

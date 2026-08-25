@@ -1,79 +1,222 @@
-[tool.poetry]
-name = "chat-with-your-data-solution-accelerator"
-version = "1.1.0"
-description = "Chat with your data solution accelerator"
-authors = []
+[project]
+name = "cwyd-v2"
+version = "0.1.0"
+description = "Chat With Your Data Solution Accelerator — v2 (FastAPI + Functions + Foundry IQ)"
 readme = "README.md"
-packages = [
-    { include = "code" }
+requires-python = ">=3.11"
+dependencies = [
+    # Core web + Functions runtime
+    "fastapi==0.133.0",
+    "uvicorn[standard]>=0.34,<1.0",
+    "azure-functions>=1.24,<2.0",
+    "httpx>=0.28,<1.0",
+    "python-dotenv>=1.2,<2.0",
+    "python-multipart>=0.0.31,<1.0",
+
+    # Config + validation
+    "pydantic>=2.11,<3.0",
+    "pydantic-settings>=2.14.2,<3.0",
+    "jsonschema>=4.25,<5.0",
+
+    # Foundry IQ + Azure AI
+    "azure-ai-projects==2.2.0",
+    "azure-ai-agents==1.2.0b6",
+    "azure-ai-documentintelligence>=1.0,<2.0",
+    "azure-ai-contentsafety>=1.0,<2.0",
+    "azure-search-documents>=11.6.0b1",
+    "openai==2.32.0",
+    "tiktoken>=0.12,<1.0",
+
+    # LangChain / LangGraph orchestrators
+    "langchain>=1.2,<2.0",
+    "langgraph>=1.0,<2.0",
+    "langchain-openai>=1.1,<2.0",
+
+    # OSS Microsoft Agent Framework (orchestrator backend behind the
+    # `agent_framework` registry key). Pin the *core* distribution, not the
+    # `agent-framework` umbrella meta-package: the umbrella depends on
+    # `agent-framework-hyperlight` (env marker `python_version < "3.14"`),
+    # which in turn requires `hyperlight-sandbox-backend-wasm` — unresolvable
+    # on the Functions host's Python 3.11 runtime, so a remote pip build
+    # backtracks indefinitely and never completes. Only `agent_framework`
+    # (core) and `agent_framework_foundry` are imported in this codebase;
+    # `agent-framework-foundry` supplies the Foundry hosted-agent integration.
+    "agent-framework-core==1.7.0",
+    "agent-framework-foundry==1.7.0",
+
+    # Azure data plane (passwordless via Managed Identity)
+    "azure-identity>=1.25,<2.0",
+    "azure-storage-blob>=12.28,<13.0",
+    "azure-storage-queue>=12.15,<13.0",
+    "azure-cosmos>=4.14,<5.0",
+    # aiohttp is required by azure-core's async transport (used by every
+    # `azure.*.aio` client incl. azure.identity.aio.DefaultAzureCredential).
+    "aiohttp>=3.14.3,<4.0",
+
+    # PostgreSQL (pgvector mode)
+    "asyncpg>=0.31,<1.0",
+    "psycopg2-binary>=2.9,<3.0",
+    "pgvector>=0.4,<1.0",
+
+    # Document parsers
+    "python-docx>=1.2,<2.0",
+    "beautifulsoup4>=4.14,<5.0",
+    "chardet>=5.2,<6.0",
+    "fake-useragent>=2.2,<3.0",
+    "requests>=2.32,<3.0",
+
+    # Observability
+    "azure-monitor-opentelemetry>=1.6.10,<2.0",
+    "opentelemetry-instrumentation-httpx>=0.52b0",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-azure-functions = "1.24.0"
-streamlit = "1.52.2"
-python-dotenv = "1.2.1"
-azure-ai-formrecognizer = "3.3.3"
-azure-storage-blob = "12.27.1"
-azure-identity = "1.25.1"
-flask = {extras = ["async"], version = "^3.1.2"}
-openai = "1.109.1"
-langchain = "0.2.17"
-langchain-community = "0.2.19"
-langchain-openai = "0.1.25"
-requests = "2.32.5"
-tiktoken = "0.12.0"
-azure-storage-queue = "12.14.1"
-beautifulsoup4 = "4.14.3"
-fake-useragent = "2.2.0"
-chardet = "5.2.0"
-azure-search-documents = "11.6.0b1"
-azure-ai-contentsafety = "1.0.0"
-python-docx = "1.2.0"
-azure-keyvault-secrets = "4.10.0"
-pandas = "2.3.3"
-azure-monitor-opentelemetry = "^1.6.10"
-opentelemetry-instrumentation-httpx = "^0.52b0"
-pillow = "11.0.0"
-azure-mgmt-cognitiveservices = "^14.1.0"
-jsonschema = "^4.25.1"
-semantic-kernel = {version = "1.39.0", python = "<3.13"}
-pydantic = "2.11.10"
-azure-ai-ml = "^1.31.0"
-azure-cosmos = "^4.14.3"
-asyncpg = "^0.31.0"
-psycopg2-binary = "^2.9.11"
-pgvector = "^0.4.2"
-rfc3987 = "^1.3.8"
+[dependency-groups]
+# Minimal set the azd post-provision hook (infra/scripts/post-provision/
+# post_provision.py) imports. The vscode_web sandbox syncs only this group
+# (`uv sync --only-group provision`) so it does not install the full runtime
+# graph just to run the post-deployment step. Versions mirror the direct
+# dependencies above; keep them in lockstep.
+provision = [
+    "httpx>=0.28,<1.0",
+    "psycopg2-binary>=2.9,<3.0",
+    "azure-identity>=1.25,<2.0",
+    "azure-search-documents>=11.6.0b1",
+]
+dev = [
+    "pytest>=9.0,<10.0",
+    "pytest-cov>=7.0,<8.0",
+    "pytest-asyncio>=1.2,<2.0",
+    "pytest-httpserver>=1.1,<2.0",
+    "black>=26.3.1,<27.0",
+    "flake8>=7.3,<8.0",
+    "trustme>=1.2,<2.0",
+    # Q13 (2026-05-05): CI-enforced static type checking. Pinned to a
+    # known-good minor; bump deliberately so a pyright minor release
+    # cannot silently change the diagnostic surface between PRs.
+    "pyright>=1.1.380,<2.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^9.0.2"
-pytest-cov = "7.0.0"
-flake8 = "7.3.0"
-black = "25.12.0"
-pre-commit = "4.5.1"
-pytest_httpserver = "1.1.3"
-trustme = "1.2.1"
-jupyter = "1.1.1"
-pytest-asyncio = "^1.2.0"
+[[tool.uv.index]]
+name = "microsoft"
+url = "https://packagefeedproxy.microsoft.io/pypi/simple"
+default = true
 
-[tool.poetry.group.prompt-flow]
-optional = true
+[tool.uv]
+prerelease = "if-necessary-or-explicit"
+# Security floors for transitive dependencies. None of these packages are
+# imported by first-party code; they are pulled in transitively (requests,
+# azure-*, langchain, tiktoken, …), so they are constrained here rather than
+# added as direct dependencies. Each floor pins to the patched release named
+# in the corresponding advisory:
+#   urllib3 >= 2.7.0     — decompression-bomb bypass in the streaming API
+#                          (affected >= 2.6.0, < 2.7.0).
+#   cryptography >= 48.0.1 — wheels bundled a statically linked OpenSSL with a
+#                          security issue (OpenSSL advisory 2026-06-09);
+#                          exposed by all Azure SDK / requests TLS.
+#   langsmith >= 0.8.18  — public-prompt-pull manifest deserialization and
+#                          TracingMiddleware arbitrary file read (neither
+#                          feature is used here; floored for defense in depth).
+#   langchain-core >= 1.2.22 — path traversal in legacy prompt loaders (the
+#                              legacy loaders are not used here).
+#   idna, PyJWT, Soup Sieve, and Starlette are transitive dependencies with
+#   patched releases that remain compatible with their owning packages.
+#   azure-monitor-opentelemetry-exporter >= 1.0.0b51 and opentelemetry-sdk /
+#   -api < 1.41 — agent-framework-core==1.7.0 forces opentelemetry-api>=1.39,
+#                 but the older exporter b45 imports `LogData` from
+#                 `opentelemetry.sdk._logs`, removed in opentelemetry-sdk
+#                 1.39.0. An unconstrained resolve maxes the SDK to 1.44 and
+#                 backtracks to the broken b45, failing import at collection.
+#                 Floor the exporter to b51 (LogData-free, uses
+#                 ReadableLogRecord) and cap the SDK/API to the 1.40 line so
+#                 the resolver settles on the b51 + 1.40 pair.
+constraint-dependencies = [
+    "urllib3>=2.7.0",
+    "cryptography>=48.0.1",
+    "langsmith>=0.8.18",
+    "langchain-core>=1.2.22",
+    "idna>=3.15",
+    "pyjwt>=2.13.0",
+    "soupsieve>=2.8.4",
+    "starlette>=1.3.1",
+    "azure-monitor-opentelemetry-exporter>=1.0.0b51",
+    "opentelemetry-sdk<1.41",
+    "opentelemetry-api<1.41",
+]
 
-[tool.poetry.group.prompt-flow.dependencies]
-promptflow = {extras = ["azure"], version = "1.18.1"}
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# Import mode is `importlib` (not the legacy `prepend`) so test modules are
+# loaded under their full dotted package path. This is what lets the modular
+# blueprint tree work: `tests.functions.batch_start.test_blueprint` and
+# `tests.functions.batch_push.test_blueprint` co-exist with identical
+# basenames because pytest sees them as different fully-qualified modules.
+# Default `prepend` mode would crash on import because it only inserts the
+# test file's directory on sys.path and imports by basename. See pytest docs
+# https://docs.pytest.org/en/stable/explanation/pythonpath.html#import-modes
+# Locked-in 2026-05-26 as the scaling strategy for every future Phase-6
+# Functions blueprint (add_url, search_skill, …) so each new blueprint can
+# drop `tests/functions/<name>/test_blueprint.py` without renames or new
+# `__init__.py` markers. Note: pytest 9 only recognises the import-mode flag
+# via `addopts` (the bare `import_mode` ini key is rejected as unknown).
+addopts = "--import-mode=importlib -m 'not smoke and not integration'"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "unit: fast unit tests with all I/O mocked",
+    "integration: opt-in live tests that boot the real app against real Azure data-plane services; deselected by default; require a populated .env + az login (see tests/integration)",
+    "smoke: CI-only live-container end-to-end checks; excluded from default pytest run by addopts",
+]
 
 [tool.coverage.run]
-omit = [
-    "**/tests/*",
-    "**/dist/*",
-    "**/infra/*",
-]
+source = ["src"]
+omit = ["**/tests/*", "**/__init__.py"]
 
 [tool.coverage.report]
 skip_empty = true
-include_namespace_packages = true
+show_missing = true
+
+# ---------------------------------------------------------------------------
+# Static type checking (Q13, 2026-05-05; updated 2026-05-06 by REFACTOR-B).
+#
+# Strict mode is scoped to the production packages owned by the FastAPI
+# backend (`src/backend/**` -- now includes the moved `backend/core/**`)
+# and the functions extension layer (`src/functions/core/**`). Functions
+# legacy stub (`src/functions/function_app.py`, etc.) and tests
+# (`tests/**`) stay on basic mode for now -- promoting them is a follow-up
+# CU triggered by the first errors-or-zero pyright run after this turn.
+# Files NOT listed in `include` are excluded entirely; `strict` then
+# promotes the listed globs from basic to strict (full reporting +
+# treat-warnings-as-errors).
+#
+# `reportMissingTypeStubs = "warning"` keeps third-party libraries
+# without bundled stubs (pgvector, asyncpg in some versions, etc.) from
+# turning the whole run red while still surfacing them in the report.
+#
+# 2026-05-06 (REFACTOR-B): `src/shared` removed from include / strict /
+# exclude (folder was `git mv`'d to `src/backend/core/` and is fully
+# covered by the existing `src/backend/**` glob). `src/functions` added
+# to include + `src/functions/core/**` added to strict per user decision
+# (functions/core gets the strict bar from day one, even while empty).
+# ---------------------------------------------------------------------------
+[tool.pyright]
+pythonVersion = "3.13"
+include = ["src/backend", "src/functions"]
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules",
+    "src/backend/**/tests",
+    "src/functions/**/tests",
+]
+strict = ["src/backend/**", "src/functions/core/**"]
+reportMissingTypeStubs = "warning"
+venvPath = "."
+venv = ".venv"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backend", "src/functions"]

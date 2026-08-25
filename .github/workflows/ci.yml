@@ -18,6 +18,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  id-token: write
   contents: read
   packages: write
 
@@ -25,13 +26,42 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  deploy:
+  check-changes:
     runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.filter.outputs.deploy_related }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for relevant changes
+        id: filter
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        with:
+          filters: |
+            deploy_related:
+              - 'infra/**'
+              - 'scripts/**'
+              - 'azure.yaml'
+              - 'pyproject.toml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+
+      - name: Skip - No Relevant Changes
+        if: steps.filter.outputs.deploy_related != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
+        run: echo "No relevant changes detected. Skipping deployment validation."
+
+  deploy:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_deploy == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: production
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       PRINCIPAL_ID: ${{ secrets.PRINCIPAL_ID }}
       PRINCIPAL_NAME: ${{ secrets.PRINCIPAL_NAME }}
       PRINCIPAL_TYPE: 'ServicePrincipal'
@@ -46,29 +76,29 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Install AZD
-        run: |
-          set -e
-          echo "Fetching deployment output..."
-          # Install azd (Azure Developer CLI) - required by process_sample_data.sh
-          curl -fsSL https://aka.ms/install-azd.sh | bash
+      - name: Install azd
+        uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2
+
+      - name: Login to Azure
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run Quota Check
         id: quota-check
         run: |
-          export AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
-          export AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
-          export AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
           export AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           export GPT_MIN_CAPACITY="150"
           export TEXT_EMBEDDING_MIN_CAPACITY="30"
           export AZURE_REGIONS="${{ vars.AZURE_REGIONS }}"
 
-          chmod +x scripts/checkquota.sh
-          if ! scripts/checkquota.sh; then
-            if grep -q "No region with sufficient quota found" scripts/checkquota.sh; then
+          chmod +x infra/scripts/pre-provision/checkquota.sh
+          if ! infra/scripts/pre-provision/checkquota.sh; then
+            if grep -q "No region with sufficient quota found" infra/scripts/pre-provision/checkquota.sh; then
               echo "QUOTA_FAILED=true" >> $GITHUB_ENV
             fi
             exit 1
@@ -114,13 +144,17 @@ jobs:
         run: |
           echo "RESOURCE_GROUP: ${{ env.RESOURCE_GROUP_NAME }}"
           set -e
-          echo "Checking if resource group exists..."
+          OWNER_TAG_VALUE="${{ github.actor }}"
+          echo "🔍 Checking if resource group '${{ env.RESOURCE_GROUP_NAME }}' exists..."
           rg_exists=$(az group exists --name ${{ env.RESOURCE_GROUP_NAME }})
           if [ "$rg_exists" = "false" ]; then
-            echo "Resource group does not exist. Creating..."
-            az group create --name ${{ env.RESOURCE_GROUP_NAME }} --location ${{ env.AZURE_LOCATION }} --tags SecurityControl=Ignore CreatedBy="Pipeline" || { echo "Error creating resource group"; exit 1; }
+            echo "📦 Resource group does not exist. Creating..."
+            echo "🏷️  Adding Owner tag: Owner=${OWNER_TAG_VALUE}"
+            az group create --name ${{ env.RESOURCE_GROUP_NAME }} --location ${{ env.AZURE_LOCATION }} --tags SecurityControl=Ignore CreatedBy="Pipeline" "Owner=${OWNER_TAG_VALUE}" || { echo "Error creating resource group"; exit 1; }
           else
-            echo "Resource group already exists."
+            echo "✅ Resource group already exists."
+            echo "🏷️  Adding Owner tag on existing resource group: Owner=${OWNER_TAG_VALUE}"
+            az group update --name "${{ env.RESOURCE_GROUP_NAME }}" --set tags.Owner="${OWNER_TAG_VALUE}" --output none || echo "⚠️  Warning: failed to update Owner tag on existing resource group '${{ env.RESOURCE_GROUP_NAME }}'."
           fi
           # Set output for other jobs
           echo "RESOURCE_GROUP_NAME=${{ env.RESOURCE_GROUP_NAME }}" >> $GITHUB_OUTPUT
@@ -139,7 +173,7 @@ jobs:
           echo "Generated SOLUTION_SUFFIX: ${UNIQUE_SOLUTION_SUFFIX}"
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -160,7 +194,7 @@ jobs:
           fi
 
       - name: Pre-build image and deploy
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         env:
                       AZURE_ENV_NAME: ${{ env.SOLUTION_SUFFIX }}
                       AZURE_LOCATION: ${{ env.AZURE_LOCATION }}
@@ -173,8 +207,9 @@ jobs:
                             runCmd: |
                               export optional_args="./code/tests"
 
-                              # Azure login first
-                              az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+                              # Azure login via OIDC federated token
+                              OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r '.value')
+                              az login --service-principal -u "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --federated-token "$OIDC_TOKEN"
                               az account set --subscription $AZURE_SUBSCRIPTION_ID
 
                               # Capture deployment output to a log file
@@ -196,9 +231,10 @@ jobs:
                               echo "Frontend URL from logs: $(cat log_web_url.txt)"
                             env: |
                               AZURE_CLIENT_ID
-                              AZURE_CLIENT_SECRET
                               AZURE_TENANT_ID
                               AZURE_SUBSCRIPTION_ID
+                              ACTIONS_ID_TOKEN_REQUEST_URL
+                              ACTIONS_ID_TOKEN_REQUEST_TOKEN
                               AZURE_ENV_NAME
                               AZURE_LOCATION
                               AZURE_RESOURCE_GROUP
@@ -290,10 +326,6 @@ jobs:
         env:
                 FRONTEND_WEBSITE_URL: ${{ env.FRONTEND_WEBSITE_URL }}
                 ADMIN_WEBSITE_URL: ${{ env.ADMIN_WEBSITE_URL }}
-                AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-                AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-                AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-                AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Export PostgreSQL Host Endpoint from Makefile
         run: |
@@ -317,7 +349,7 @@ jobs:
                 echo "Port: 5432 (hardcoded)"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
                 python-version: '3.11'
 
@@ -330,19 +362,23 @@ jobs:
           python - <<EOF
           import os
           import psycopg2
-          from azure.identity import ClientSecretCredential
+          from azure.identity import DefaultAzureCredential
 
-          tenant_id = os.environ["AZURE_TENANT_ID"]
-          client_id = os.environ["AZURE_CLIENT_ID"]
-          client_secret = os.environ["AZURE_CLIENT_SECRET"]
           pg_host = os.environ.get("PG_HOST_DESTINATION", "localhost")
 
-          # Acquire Azure AD access token for PostgreSQL
-          credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+          # Acquire Azure AD access token for PostgreSQL via OIDC (Azure CLI credential)
+          credential = DefaultAzureCredential()
           token = credential.get_token("https://ossrdbms-aad.database.windows.net/.default").token
 
+          # Get the service principal display name for PostgreSQL user
+          import subprocess
+          sp_display_name = subprocess.run(
+              ["az", "ad", "sp", "show", "--id", os.environ["AZURE_CLIENT_ID"], "--query", "displayName", "-o", "tsv"],
+              capture_output=True, text=True
+          ).stdout.strip()
+
           db_params = {
-              "user": client_id,   # Use service principal clientId
+              "user": sp_display_name,   # Use service principal display name
               "password": token,   # Use AAD token instead of password
               "host": pg_host,
               "port": "5432",
@@ -364,10 +400,6 @@ jobs:
           except Exception as e:
               print(f"❌ Error during import: {e}")
           EOF
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Final Status Check
         id: final-status
@@ -391,8 +423,8 @@ jobs:
 
 
   e2e-test:
-    needs: deploy
-    if: needs.deploy.outputs.DEPLOYMENT_SUCCESS == 'true'
+    needs: [check-changes, deploy]
+    if: always() && needs.deploy.result == 'success' && needs.deploy.outputs.DEPLOYMENT_SUCCESS == 'true'
     uses: ./.github/workflows/test-automation.yml
     with:
       web_url: ${{ needs.deploy.outputs.web_url }}
@@ -400,15 +432,15 @@ jobs:
 
 
   cleanup:
-    if: always()
-    needs: [deploy, e2e-test]
+    if: always() && needs.deploy.result != 'skipped'
+    needs: [check-changes, deploy, e2e-test]
     runs-on: ubuntu-latest
+    environment: production
 
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_ENV_NAME: ${{ needs.deploy.outputs.solution_suffix }}  # Get from deploy job
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       imageTag: ${{ needs.deploy.outputs.imageTag }}
@@ -416,20 +448,25 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Destroy resources
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           push: never
           imageName: ghcr.io/azure-samples/chat-with-your-data-solution-accelerator
           imageTag: ${{ env.imageTag }}
-          runCmd: make destroy
+          runCmd: |
+            OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r '.value')
+            az login --service-principal -u "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --federated-token "$OIDC_TOKEN"
+            az account set --subscription $AZURE_SUBSCRIPTION_ID
+            make destroy
           env: |
             AZURE_CLIENT_ID
-            AZURE_CLIENT_SECRET
             AZURE_TENANT_ID
             AZURE_SUBSCRIPTION_ID
+            ACTIONS_ID_TOKEN_REQUEST_URL
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN
             AZURE_ENV_NAME
             AZURE_LOCATION
             AZURE_RESOURCE_GROUP
